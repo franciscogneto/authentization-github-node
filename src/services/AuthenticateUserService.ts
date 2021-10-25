@@ -1,4 +1,6 @@
 import axios from "axios";
+import prismaClient from "../prisma";
+import {sign} from "jsonwebtoken";
 
 interface IAccessTokenResponse {
   access_token:string;
@@ -25,15 +27,40 @@ class AuthenticateUserService{
         "Accept": "application/json"
       }
     });
-    console.log(data);
+    
     const response = await axios.get<IUserResponse>("https://api.github.com/user", {
       headers:{
         authorization: `Bearer ${data.access_token}`
       }
-    })
+    });
 
+    const {login,avatar_url,id,name} = response.data;
+    
+    let user = await prismaClient.user.findFirst({where:{
+      github_id:id,
+    }});
 
-    return response.data;
+    if(!user){
+      user = await prismaClient.user.create({data:{
+        avatar_url:avatar_url,
+        github_id:id,
+        login:login,
+        name:name == null && "", 
+      }});
+    }
+      const token = sign({
+        user:{
+          name:user.name,
+          avatar_url:user.avatar_url,
+          id: user.github_id
+        }
+      },process.env.JWT_SECRET, {
+        subject:user.id,
+        expiresIn:"1d"
+      });
+    
+
+    return {token,user};
      
 
   }
